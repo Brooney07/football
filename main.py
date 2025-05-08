@@ -2,7 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 from typing import Optional
-from sqlmodel import SQLModel, Field, create_engine, Session, select
+from sqlmodel import Field, SQLModel, create_engine, Session, select
+from pydantic import BaseModel
 
 app = FastAPI()
 
@@ -40,4 +41,47 @@ def on_startup():
 def get_accuracy():
     with Session(engine) as session:
         total = session.exec(select(PredictionResult)).all()
-        return {"total_predictions": len(total)}
+        correct_1x2 = [r for r in total if r.actual_1x2 == r.prediction_1x2]
+        accuracy = len(correct_1x2) / len(total) if total else 0
+        return {"accuracy_1x2": accuracy}
+
+# New input model for /predict
+class PredictionInput(BaseModel):
+    home_team: int
+    away_team: int
+
+# New endpoint for predictions
+@app.post("/predict")
+def predict(input: PredictionInput):
+    # Dummy prediction logic — replace with your ML model
+    prediction_1x2 = "1" if input.home_team > input.away_team else "2"
+    confidence_1x2 = 0.75
+    prediction_ou = "Over 2.5"
+    confidence_ou = 0.65
+    prediction_btts = "Yes"
+    confidence_btts = 0.70
+
+    # Save to database
+    new_record = PredictionResult(
+        timestamp=datetime.utcnow(),
+        home_team=input.home_team,
+        away_team=input.away_team,
+        prediction_1x2=prediction_1x2,
+        confidence_1x2=confidence_1x2,
+        prediction_ou=prediction_ou,
+        confidence_ou=confidence_ou,
+        prediction_btts=prediction_btts,
+        confidence_btts=confidence_btts,
+    )
+    with Session(engine) as session:
+        session.add(new_record)
+        session.commit()
+
+    return {
+        "prediction_1x2": prediction_1x2,
+        "confidence_1x2": confidence_1x2,
+        "prediction_ou": prediction_ou,
+        "confidence_ou": confidence_ou,
+        "prediction_btts": prediction_btts,
+        "confidence_btts": confidence_btts,
+    }
